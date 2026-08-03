@@ -35,7 +35,7 @@ if (-not (Test-Path -LiteralPath $wrapperPath)) {
 Write-Host "Updating HireTrack Stocktakes from $Branch..." -ForegroundColor Cyan
 Push-Location $appDirectory
 try {
-  git config core.autocrlf false
+  git config core.autocrlf true
   git restore --worktree -- dist package-lock.json
   git fetch origin $Branch
   git checkout $Branch

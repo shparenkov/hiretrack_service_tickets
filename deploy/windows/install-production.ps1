@@ -118,7 +118,7 @@ New-Item -ItemType Directory -Path $InstallRoot -Force | Out-Null
 if (Test-Path -LiteralPath (Join-Path $appDirectory '.git')) {
   Push-Location $appDirectory
   try {
-    git config core.autocrlf false
+    git config core.autocrlf true
     git restore --worktree -- dist package-lock.json
     git fetch origin $Branch
     git checkout $Branch
@@ -135,7 +135,7 @@ if (Test-Path -LiteralPath (Join-Path $appDirectory '.git')) {
   git clone --branch $Branch --single-branch $RepoUrl $appDirectory
 }
 
-git -C $appDirectory config core.autocrlf false
+git -C $appDirectory config core.autocrlf true
 
 Write-Step 'Installing dependencies and building application'
 Push-Location $appDirectory
