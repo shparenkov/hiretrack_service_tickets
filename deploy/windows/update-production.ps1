@@ -36,10 +36,15 @@ Write-Host "Updating HireTrack Stocktakes from $Branch..." -ForegroundColor Cyan
 Push-Location $appDirectory
 try {
   git config core.autocrlf true
-  git restore --worktree -- dist package-lock.json
+  if ($LASTEXITCODE -ne 0) { throw 'git config failed.' }
+  git restore --worktree -- dist package-lock.json deploy/windows/update-production.ps1
+  if ($LASTEXITCODE -ne 0) { throw 'git restore failed.' }
   git fetch origin $Branch
+  if ($LASTEXITCODE -ne 0) { throw 'git fetch failed.' }
   git checkout $Branch
+  if ($LASTEXITCODE -ne 0) { throw 'git checkout failed.' }
   git pull --ff-only origin $Branch
+  if ($LASTEXITCODE -ne 0) { throw 'git pull failed.' }
 
   & $wrapperPath stop
   try {
@@ -85,5 +90,5 @@ if (-not $healthy) {
   throw "Service did not become healthy at $healthUrl. Check $appDirectory\logs."
 }
 
-Write-Host "HireTrack Stocktakes is healthy at $healthUrl" -ForegroundColor Green
+Write-Host "HireTrack Service Tickets is healthy at $healthUrl" -ForegroundColor Green
 Write-Host "Service tickets: http://$env:COMPUTERNAME`:$Port/service-tickets/" -ForegroundColor Green
