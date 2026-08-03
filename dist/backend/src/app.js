@@ -41,9 +41,13 @@ function createApp() {
         res.redirect('/service-tickets/');
     });
     if (hasFrontendBuild) {
-        app.get(['/service-tickets/', '/bitrix/tickets/ui/'], (_req, res) => {
+        app.get(['/', '/service-tickets/', '/bitrix/tickets/ui/'], (_req, res) => {
             res.sendFile(frontendIndexPath);
         });
+        app.use(express_1.default.static(frontendDistPath, {
+            index: false,
+            redirect: false,
+        }));
         app.use('/service-tickets', express_1.default.static(frontendDistPath, {
             index: false,
             redirect: false,
@@ -57,7 +61,7 @@ function createApp() {
         });
     }
     else {
-        app.get(['/service-tickets/', '/service-tickets/*', '/bitrix/tickets/ui/', '/bitrix/tickets/ui/*'], (_req, res) => {
+        app.get(['/', '/service-tickets/', '/service-tickets/*', '/bitrix/tickets/ui/', '/bitrix/tickets/ui/*'], (_req, res) => {
             res.type('html').send((0, bitrix_ticket_app_1.renderFrontendBuildMissingPage)());
         });
     }

@@ -169,6 +169,6 @@ export function installPasswordAuth(app: import('express').Express): void {
     if (req.path.startsWith('/api/') || req.path.startsWith('/service-tickets/api/')) {
       return res.status(401).json({ error: 'authentication_required' });
     }
-    return res.redirect(`/service-tickets/login?next=${encodeURIComponent(req.originalUrl)}`);
+    return res.redirect('/service-tickets/login?next=%2Fservice-tickets%2F');
   });
 }
