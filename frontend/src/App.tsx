@@ -62,6 +62,7 @@ export default function App() {
         <div className="topbar-actions">
           <a className="secondary-link" href="/">Главная</a>
           <a className="secondary-link" href="/bitrix/tickets/stocktake-history/">Инвентаризация</a>
+          <a className="secondary-link" href="/daybook/">План склада</a>
           <button onClick={() => void reloadTickets()} disabled={loading}>
             {loading ? 'Обновление...' : 'Обновить'}
           </button>
