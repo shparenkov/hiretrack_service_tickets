@@ -1,6 +1,6 @@
 node_modules/
 logs/
 tmp/
-/HireTrackStocktakes.exe
-/HireTrackStocktakes.xml
-
+/HireTrackServiceTickets.exe
+/HireTrackServiceTickets.xml
+*.tsbuildinfo
