@@ -55,12 +55,12 @@ export default function App() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <div>
-          <div className="eyebrow">HireTrack NX</div>
-          <h1>Сервисные тикеты</h1>
-          <p>Приём оборудования в ремонт по штрихкоду или серийному номеру.</p>
+        <div className="brand-line">
+          <h1>Service Tickets</h1>
+          <p>приём оборудования в ремонт</p>
         </div>
         <div className="topbar-actions">
+          <a className="secondary-link" href="/">Главная</a>
           <a className="secondary-link" href="/bitrix/tickets/stocktake-history/">Инвентаризация</a>
           <button onClick={() => void reloadTickets()} disabled={loading}>
             {loading ? 'Обновление...' : 'Обновить'}
@@ -76,7 +76,7 @@ export default function App() {
         </section>
 
         <section className="panel panel-wide">
-          <div className="panel-title">Tickets</div>
+          <div className="panel-title">Тикеты</div>
           <TicketList items={tickets} selectedTicketId={selectedTicketId} onSelect={setSelectedTicketId} />
         </section>
 

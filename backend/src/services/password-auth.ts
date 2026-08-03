@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import fs from 'fs';
 import { NextFunction, Request, Response } from 'express';
 
-const COOKIE_NAME = 'service_tickets_session';
+const COOKIE_NAME = 'hiretrack_session';
 const DEFAULT_SESSION_DAYS = 30;
 const FAILURE_WINDOW_MS = 15 * 60 * 1000;
 const MAX_FAILURES = 8;

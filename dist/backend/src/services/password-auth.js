@@ -6,7 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.installPasswordAuth = installPasswordAuth;
 const crypto_1 = __importDefault(require("crypto"));
 const fs_1 = __importDefault(require("fs"));
-const COOKIE_NAME = 'service_tickets_session';
+const COOKIE_NAME = 'hiretrack_session';
 const DEFAULT_SESSION_DAYS = 30;
 const FAILURE_WINDOW_MS = 15 * 60 * 1000;
 const MAX_FAILURES = 8;
