@@ -38,7 +38,7 @@ export async function lookupEquipmentEqlistsInHiretrack(input: {
   }
 
   const rows = await runHiretrackRead<EqlistRow[]>('eqlists', { itemRef, lookup });
-  return rows.flatMap((row) => {
+  const normalized = rows.flatMap((row) => {
     const eqlistId = normalizeInt(row.EqlistId);
     if (!eqlistId) {
       return [];
@@ -53,5 +53,24 @@ export async function lookupEquipmentEqlistsInHiretrack(input: {
       operationType: normalizeInt(row.OperationType),
       isCurrent: normalizeBool(row.IsCurrent),
     } satisfies HiretrackEqlistLookupRecord];
+  });
+
+  const byEqlist = new Map<number, HiretrackEqlistLookupRecord>();
+  for (const row of normalized) {
+    const existing = byEqlist.get(row.eqlistId);
+    if (!existing) {
+      byEqlist.set(row.eqlistId, row);
+      continue;
+    }
+    byEqlist.set(row.eqlistId, {
+      ...(String(row.lastSeenAt || '') > String(existing.lastSeenAt || '') ? row : existing),
+      isCurrent: existing.isCurrent || row.isCurrent,
+    });
+  }
+  return [...byEqlist.values()].sort((left, right) => {
+    if (left.isCurrent !== right.isCurrent) {
+      return left.isCurrent ? -1 : 1;
+    }
+    return String(right.lastSeenAt || '').localeCompare(String(left.lastSeenAt || ''));
   });
 }
