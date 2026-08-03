@@ -70,16 +70,16 @@ function isHttps(req: Request): boolean {
   return req.secure || req.get('x-forwarded-proto')?.split(',')[0].trim() === 'https';
 }
 
-function safeRedirectTarget(value: unknown): string {
+function safeRedirectTarget(value: unknown, defaultTarget: string): string {
   const target = typeof value === 'string' ? value : '';
   return target.startsWith('/') && !target.startsWith('//') && !target.startsWith('/login')
     ? target
-    : '/service-tickets/';
+    : defaultTarget;
 }
 
-function loginPage(errorMessage = '', redirectTarget = '/service-tickets/'): string {
+function loginPage(basePath: string, errorMessage = '', redirectTarget = `${basePath}/`): string {
   const error = errorMessage ? `<p class="error">${errorMessage}</p>` : '';
-  const next = safeRedirectTarget(redirectTarget).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+  const next = safeRedirectTarget(redirectTarget, `${basePath}/`).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
   return `<!doctype html>
 <html lang="ru">
 <head>
@@ -106,7 +106,7 @@ function loginPage(errorMessage = '', redirectTarget = '/service-tickets/'): str
 <body>
   <main>
     <header><h1>HireTrack Service</h1><p>Введите пароль для доступа к сервисным тикетам</p></header>
-    <form method="post" action="/service-tickets/login">
+    <form method="post" action="${basePath}/login">
       ${error}
       <input name="next" type="hidden" value="${next}">
       <label for="password">Пароль</label>
@@ -118,7 +118,7 @@ function loginPage(errorMessage = '', redirectTarget = '/service-tickets/'): str
 </html>`;
 }
 
-export function installPasswordAuth(app: import('express').Express): void {
+export function installPasswordAuth(app: import('express').Express, basePath = '/service-tickets'): void {
   const password = readPassword();
   const sessionDurationMs = sessionTtlMs();
   if (!password) {
@@ -127,14 +127,14 @@ export function installPasswordAuth(app: import('express').Express): void {
 
   const failures = new Map<string, FailureRecord>();
 
-  app.get(['/login', '/service-tickets/login'], (req, res) => {
-    const redirectTarget = safeRedirectTarget(req.query.next);
+  app.get(['/login', `${basePath}/login`], (req, res) => {
+    const redirectTarget = safeRedirectTarget(req.query.next, `${basePath}/`);
     if (hasValidSession(req, password)) return res.redirect(redirectTarget);
-    return res.type('html').send(loginPage('', redirectTarget));
+    return res.type('html').send(loginPage(basePath, '', redirectTarget));
   });
 
-  app.post(['/login', '/service-tickets/login'], (req, res) => {
-    const redirectTarget = safeRedirectTarget(req.body?.next);
+  app.post(['/login', `${basePath}/login`], (req, res) => {
+    const redirectTarget = safeRedirectTarget(req.body?.next, `${basePath}/`);
     const key = req.ip || req.socket.remoteAddress || 'unknown';
     const now = Date.now();
     if (failures.size > 2000) {
@@ -145,7 +145,7 @@ export function installPasswordAuth(app: import('express').Express): void {
     }
     const record = failures.get(key);
     if (record && record.resetAt > now && record.count >= MAX_FAILURES) {
-      return res.status(429).type('html').send(loginPage('Слишком много попыток. Повторите через 15 минут.', redirectTarget));
+      return res.status(429).type('html').send(loginPage(basePath, 'Слишком много попыток. Повторите через 15 минут.', redirectTarget));
     }
 
     const suppliedPassword = typeof req.body?.password === 'string' ? req.body.password : '';
@@ -153,7 +153,7 @@ export function installPasswordAuth(app: import('express').Express): void {
       failures.set(key, record && record.resetAt > now
         ? { count: record.count + 1, resetAt: record.resetAt }
         : { count: 1, resetAt: now + FAILURE_WINDOW_MS });
-      return res.status(401).type('html').send(loginPage('Неверный пароль.', redirectTarget));
+      return res.status(401).type('html').send(loginPage(basePath, 'Неверный пароль.', redirectTarget));
     }
 
     failures.delete(key);
@@ -166,9 +166,9 @@ export function installPasswordAuth(app: import('express').Express): void {
 
   app.use((req: Request, res: Response, next: NextFunction) => {
     if (hasValidSession(req, password)) return next();
-    if (req.path.startsWith('/api/') || req.path.startsWith('/service-tickets/api/')) {
+    if (req.path.startsWith('/api/') || req.path.startsWith(`${basePath}/api/`)) {
       return res.status(401).json({ error: 'authentication_required' });
     }
-    return res.redirect('/service-tickets/login?next=%2Fservice-tickets%2F');
+    return res.redirect(`${basePath}/login?next=${encodeURIComponent(`${basePath}/`)}`);
   });
 }

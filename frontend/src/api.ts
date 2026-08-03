@@ -12,7 +12,10 @@ function getApiUrl() {
   if (configured) {
     return configured;
   }
-  return '/service-tickets/api';
+  const basePath = window.location.pathname.startsWith('/service-tickets-test')
+    ? '/service-tickets-test'
+    : '/service-tickets';
+  return `${basePath}/api`;
 }
 
 const API_URL = getApiUrl();

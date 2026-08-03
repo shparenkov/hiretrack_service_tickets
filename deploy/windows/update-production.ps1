@@ -4,17 +4,23 @@
 param(
   [string]$InstallRoot = 'C:\Services',
   [string]$Branch = 'master',
-  [int]$Port = 3002
+  [int]$Port = 3002,
+  [string]$ServiceId = 'HireTrackServiceTickets',
+  [string]$ServiceName = 'HireTrack Service Tickets',
+  [string]$AppDirectoryName = 'hiretrack_service_tickets',
+  [string]$TicketFile = 'C:\Services\data\service-tickets.json',
+  [string]$BasePath = '/service-tickets',
+  [string]$Mode = 'production',
+  [string]$PythonPath = 'C:\Users\Admin\AppData\Local\Programs\Python\Python313-32\python.exe'
 )
 
 $ErrorActionPreference = 'Stop'
-$serviceId = 'HireTrackServiceTickets'
-$appDirectory = Join-Path $InstallRoot 'hiretrack_service_tickets'
-$wrapperPath = Join-Path $appDirectory "$serviceId.exe"
+$appDirectory = Join-Path $InstallRoot $AppDirectoryName
+$wrapperPath = Join-Path $appDirectory "$ServiceId.exe"
 $healthUrl = "http://127.0.0.1:$Port/health"
 
 function Set-ServiceEnvironment([string]$Name, [string]$Value) {
-  [xml]$serviceConfig = Get-Content -LiteralPath (Join-Path $appDirectory "$serviceId.xml")
+  [xml]$serviceConfig = Get-Content -LiteralPath (Join-Path $appDirectory "$ServiceId.xml")
   $node = $serviceConfig.service.env | Where-Object { $_.name -eq $Name } | Select-Object -First 1
   if (-not $node) {
     $node = $serviceConfig.CreateElement('env')
@@ -22,7 +28,7 @@ function Set-ServiceEnvironment([string]$Name, [string]$Value) {
     [void]$serviceConfig.service.AppendChild($node)
   }
   $node.SetAttribute('value', $Value)
-  $serviceConfig.Save((Join-Path $appDirectory "$serviceId.xml"))
+  $serviceConfig.Save((Join-Path $appDirectory "$ServiceId.xml"))
 }
 
 if (-not (Test-Path -LiteralPath (Join-Path $appDirectory '.git'))) {
@@ -50,7 +56,11 @@ try {
   try {
     New-Item -ItemType Directory -Path (Join-Path $InstallRoot 'data') -Force | Out-Null
     Set-ServiceEnvironment -Name 'TICKETS_STORE_MODE' -Value 'file'
-    Set-ServiceEnvironment -Name 'TICKETS_FILE_PATH' -Value 'C:\Services\data\service-tickets.json'
+    Set-ServiceEnvironment -Name 'TICKETS_FILE_PATH' -Value $TicketFile
+    Set-ServiceEnvironment -Name 'SERVICE_TICKETS_BASE_PATH' -Value $BasePath
+    Set-ServiceEnvironment -Name 'SERVICE_TICKETS_MODE' -Value $Mode
+    Set-ServiceEnvironment -Name 'HIRETRACK_PYTHON' -Value $PythonPath
+    Set-ServiceEnvironment -Name 'HIRETRACK_ODBC_DSN' -Value 'HireTrack DSN'
     & npm.cmd ci
     if ($LASTEXITCODE -ne 0) { throw 'npm ci failed.' }
     & npm.cmd run prisma:generate
@@ -90,5 +100,5 @@ if (-not $healthy) {
   throw "Service did not become healthy at $healthUrl. Check $appDirectory\logs."
 }
 
-Write-Host "HireTrack Service Tickets is healthy at $healthUrl" -ForegroundColor Green
-Write-Host "Service tickets: http://$env:COMPUTERNAME`:$Port/service-tickets/" -ForegroundColor Green
+Write-Host "$ServiceName is healthy at $healthUrl" -ForegroundColor Green
+Write-Host "Service tickets: http://$env:COMPUTERNAME`:$Port$BasePath/" -ForegroundColor Green

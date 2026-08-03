@@ -11,9 +11,9 @@ Web interface for receiving equipment into service by barcode or serial number.
 - Bitrix ticket synchronization
 - persistent local ticket and activity history
 
-The current HireTrack adapter uses the existing HTTP/QBE integration. It can be
-replaced with a direct ODBC adapter after the production DSN, credentials, and
-write-safe HireTrack schema are confirmed.
+Equipment and eqlist lookups use a read-only Python/ODBC bridge. Logged Fault
+creation remains on the existing HireTrack HTTP/QBE integration so HireTrack's
+write-side business logic is preserved.
 
 ## Development
 
@@ -31,6 +31,11 @@ The UI is available at `http://127.0.0.1:3002/service-tickets/`.
 
 Production runs from `master` as the `HireTrackServiceTickets` Windows service
 in `C:\Services\hiretrack_service_tickets` on port `3002`.
+
+The isolated test environment runs from `develop` as
+`HireTrackServiceTicketsTest` in `C:\Services\hiretrack_service_tickets_test`
+on port `3003`. It uses `C:\Services\data\service-tickets-test.json` and the
+`/service-tickets-test/` URL prefix.
 
 Configuration shared with the HireTrack integration is read from
 `C:\Services\hiretrack.config.json`. The access password is read from

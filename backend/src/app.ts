@@ -13,6 +13,8 @@ import { installPasswordAuth } from './services/password-auth';
 export function createApp() {
   const app = express();
   app.set('trust proxy', 'loopback');
+  const configuredBasePath = process.env.SERVICE_TICKETS_BASE_PATH || '/service-tickets';
+  const basePath = `/${configuredBasePath.replace(/^\/+|\/+$/g, '')}`;
   const frontendDistPath = resolveTicketsFrontendDistPath();
   const frontendIndexPath = resolveTicketsFrontendIndexPath();
   const hasFrontendBuild = fs.existsSync(frontendIndexPath);
@@ -25,15 +27,15 @@ export function createApp() {
     res.json({
       ok: true,
       service: 'hiretrack-service-tickets',
-      mode: 'production',
+      mode: process.env.SERVICE_TICKETS_MODE || 'production',
       timestamp: new Date().toISOString(),
     });
   });
 
-  installPasswordAuth(app);
+  installPasswordAuth(app, basePath);
 
   app.use('/api/tickets', ticketsRouter);
-  app.use('/service-tickets/api/tickets', ticketsRouter);
+  app.use(`${basePath}/api/tickets`, ticketsRouter);
 
   app.all(['/bitrix/tickets/app', '/bitrix/tickets/install'], (_req, res) => {
     const uiPath = '/bitrix/tickets/ui/';
@@ -41,15 +43,15 @@ export function createApp() {
   });
 
   app.get(/^\/bitrix\/tickets\/ui$/, (_req, res) => {
-    res.redirect('/service-tickets/');
+    res.redirect(`${basePath}/`);
   });
 
-  app.get(/^\/service-tickets$/, (_req, res) => {
-    res.redirect('/service-tickets/');
+  app.get(basePath, (_req, res) => {
+    res.redirect(`${basePath}/`);
   });
 
   if (hasFrontendBuild) {
-    app.get(['/', '/service-tickets/', '/bitrix/tickets/ui/'], (_req, res) => {
+    app.get(['/', `${basePath}/`, '/bitrix/tickets/ui/'], (_req, res) => {
       res.sendFile(frontendIndexPath);
     });
 
@@ -61,7 +63,7 @@ export function createApp() {
     );
 
     app.use(
-      '/service-tickets',
+      basePath,
       express.static(frontendDistPath, {
         index: false,
         redirect: false,
@@ -76,11 +78,11 @@ export function createApp() {
       }),
     );
 
-    app.get(['/service-tickets/*', '/bitrix/tickets/ui/*'], (_req, res) => {
+    app.get([`${basePath}/*`, '/bitrix/tickets/ui/*'], (_req, res) => {
       res.sendFile(frontendIndexPath);
     });
   } else {
-    app.get(['/', '/service-tickets/', '/service-tickets/*', '/bitrix/tickets/ui/', '/bitrix/tickets/ui/*'], (_req, res) => {
+    app.get(['/', `${basePath}/`, `${basePath}/*`, '/bitrix/tickets/ui/', '/bitrix/tickets/ui/*'], (_req, res) => {
       res.type('html').send(renderFrontendBuildMissingPage());
     });
   }

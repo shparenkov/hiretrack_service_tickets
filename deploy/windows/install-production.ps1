@@ -5,19 +5,26 @@ param(
   [string]$InstallRoot = 'C:\Services',
   [string]$RepoUrl = 'https://github.com/shparenkov/hiretrack_service_tickets.git',
   [string]$Branch = 'master',
-  [int]$Port = 3002
+  [int]$Port = 3002,
+  [string]$ServiceId = 'HireTrackServiceTickets',
+  [string]$ServiceName = 'HireTrack Service Tickets',
+  [string]$ServiceDescription = 'HireTrack NX barcode scanner and equipment service tickets.',
+  [string]$AppDirectoryName = 'hiretrack_service_tickets',
+  [string]$TicketFile = 'C:\Services\data\service-tickets.json',
+  [string]$BasePath = '/service-tickets',
+  [string]$Mode = 'production',
+  [string]$PythonPath = 'C:\Users\Admin\AppData\Local\Programs\Python\Python313-32\python.exe'
 )
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-$serviceId = 'HireTrackServiceTickets'
-$appDirectory = Join-Path $InstallRoot 'hiretrack_service_tickets'
-$wrapperPath = Join-Path $appDirectory "$serviceId.exe"
-$wrapperConfigPath = Join-Path $appDirectory "$serviceId.xml"
+$appDirectory = Join-Path $InstallRoot $AppDirectoryName
+$wrapperPath = Join-Path $appDirectory "$ServiceId.exe"
+$wrapperConfigPath = Join-Path $appDirectory "$ServiceId.xml"
 $healthUrl = "http://127.0.0.1:$Port/health"
-$firewallRuleName = 'HireTrack Service Tickets (Tailscale)'
+$firewallRuleName = "$ServiceName (Tailscale)"
 
 function Write-Step([string]$Message) {
   Write-Host "`n==> $Message" -ForegroundColor Cyan
@@ -77,9 +84,9 @@ function Write-ServiceConfig([string]$NodePath) {
   $escapedAppDirectory = [Security.SecurityElement]::Escape($appDirectory)
   $xml = @"
 <service>
-  <id>$serviceId</id>
-  <name>HireTrack Service Tickets</name>
-  <description>HireTrack NX barcode scanner and equipment service tickets.</description>
+  <id>$ServiceId</id>
+  <name>$ServiceName</name>
+  <description>$ServiceDescription</description>
   <executable>$escapedNodePath</executable>
   <arguments>dist\backend\src\index.js</arguments>
   <workingdirectory>$escapedAppDirectory</workingdirectory>
@@ -92,7 +99,11 @@ function Write-ServiceConfig([string]$NodePath) {
   <env name="PORT" value="$Port" />
   <env name="HOST" value="0.0.0.0" />
   <env name="TICKETS_STORE_MODE" value="file" />
-  <env name="TICKETS_FILE_PATH" value="C:\Services\data\service-tickets.json" />
+  <env name="TICKETS_FILE_PATH" value="$TicketFile" />
+  <env name="SERVICE_TICKETS_BASE_PATH" value="$BasePath" />
+  <env name="SERVICE_TICKETS_MODE" value="$Mode" />
+  <env name="HIRETRACK_PYTHON" value="$PythonPath" />
+  <env name="HIRETRACK_ODBC_DSN" value="HireTrack DSN" />
   <env name="SERVICE_TICKETS_ACCESS_PASSWORD_FILE" value="C:\Services\hiretrack-access-password.txt" />
   <logpath>%BASE%\logs</logpath>
   <log mode="roll-by-size">
@@ -176,7 +187,7 @@ if (-not $firewallRule) {
 }
 
 Write-Step 'Installing and starting Windows service'
-$existingService = Get-Service -Name $serviceId -ErrorAction SilentlyContinue
+$existingService = Get-Service -Name $ServiceId -ErrorAction SilentlyContinue
 if ($existingService) {
   & $wrapperPath restart
 } else {
@@ -205,7 +216,7 @@ if (-not $healthy) {
 }
 
 $configPath = Join-Path $InstallRoot 'hiretrack.config.json'
-Write-Host "`nProduction service is running at http://$env:COMPUTERNAME`:$Port/service-tickets/" -ForegroundColor Green
+Write-Host "`n$ServiceName is running at http://$env:COMPUTERNAME`:$Port$BasePath/" -ForegroundColor Green
 if (-not (Test-Path -LiteralPath $configPath)) {
   Write-Warning "Copy hiretrack.config.json to $configPath before loading Stock Check data."
 }
