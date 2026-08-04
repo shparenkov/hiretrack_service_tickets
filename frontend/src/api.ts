@@ -2,6 +2,7 @@ import {
   CreateTicketPayload,
   EquipmentLookupRecord,
   HiretrackEqlistLookupRecord,
+  HiretrackReporterRecord,
   HiretrackStockCheckRecord,
   TicketActivityRecord,
   TicketRecord,
@@ -94,6 +95,13 @@ export async function lookupEquipment(payload: {
     `${API_URL}/tickets/lookups/equipment?${search.toString()}`
   );
   return response.item;
+}
+
+export async function lookupHiretrackReporters(): Promise<HiretrackReporterRecord[]> {
+  const response = await fetchJson<{ ok: boolean; items: HiretrackReporterRecord[] }>(
+    `${API_URL}/tickets/lookups/reporters`
+  );
+  return response.items;
 }
 
 export async function lookupHiretrackStockCheck(payload: {

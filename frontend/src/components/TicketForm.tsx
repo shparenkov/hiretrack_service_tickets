@@ -1,11 +1,12 @@
-import { FormEvent, Suspense, lazy, useState } from 'react';
+import { FormEvent, Suspense, lazy, useEffect, useState } from 'react';
 import {
   CreateTicketPayload,
   HiretrackEqlistLookupRecord,
+  HiretrackReporterRecord,
   HiretrackStockCheckRecord,
   TicketRecord,
 } from '../types';
-import { DuplicateTicketError, lookupHiretrackStockCheck } from '../api';
+import { DuplicateTicketError, lookupHiretrackReporters, lookupHiretrackStockCheck } from '../api';
 
 const BarcodeScanner = lazy(async () => {
   const module = await import('./BarcodeScanner');
@@ -69,7 +70,11 @@ export function TicketForm({ onCreate }: TicketFormProps) {
     hiretrackItemRef: null,
     hiretrackEquipmentTypeId: null,
     createdBy: '',
+    hiretrackReporterKey: '',
   });
+  const [reporters, setReporters] = useState<HiretrackReporterRecord[]>([]);
+  const [reporterInput, setReporterInput] = useState('');
+  const [reportersError, setReportersError] = useState<string | null>(null);
   const [lookupCode, setLookupCode] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
@@ -81,6 +86,29 @@ export function TicketForm({ onCreate }: TicketFormProps) {
   const hasLookupCandidate = Boolean(lookupCode.trim());
   const hasMatchedHiretrackItem = Boolean(form.hiretrackItemRef);
   const shouldWarnLookupMissing = hasLookupCandidate && !hasMatchedHiretrackItem && !isResolvingEquipment;
+
+  useEffect(() => {
+    let cancelled = false;
+    lookupHiretrackReporters()
+      .then((items) => {
+        if (!cancelled) {
+          setReporters(items);
+          setReportersError(null);
+        }
+      })
+      .catch((caught) => {
+        if (!cancelled) {
+          setReportersError(caught instanceof Error ? caught.message : 'HireTrack reporter lookup failed.');
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function reporterLabel(reporter: HiretrackReporterRecord) {
+    return `${reporter.person} [${reporter.role === 'staff' ? 'Staff' : 'Crew'}]`;
+  }
 
   function clearHiretrackMatch(nextStockCheck: HiretrackStockCheckRecord | null = null) {
     setForm((current) => ({
@@ -134,6 +162,10 @@ export function TicketForm({ onCreate }: TicketFormProps) {
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
+    if (!form.hiretrackReporterKey || !form.createdBy) {
+      setError('Выберите сотрудника из справочника HireTrack Staff/Crew.');
+      return;
+    }
     setIsSubmitting(true);
     setError(null);
     setMessage(null);
@@ -153,7 +185,9 @@ export function TicketForm({ onCreate }: TicketFormProps) {
         hiretrackJobNo: null,
         hiretrackJobRef: null,
         createdBy: '',
+        hiretrackReporterKey: '',
       });
+      setReporterInput('');
       setLookupCode('');
       setEqlistOptions([]);
       setStockCheck(null);
@@ -283,13 +317,30 @@ export function TicketForm({ onCreate }: TicketFormProps) {
         </label>
 
         <label className="full">
-          Кто принял оборудование
+          Кто сообщил о поломке
           <input
-            value={form.createdBy || ''}
-            onChange={(event) => setForm((current) => ({ ...current, createdBy: event.target.value }))}
-            placeholder="Имя сотрудника"
+            value={reporterInput}
+            onChange={(event) => {
+              const value = event.target.value;
+              const selected = reporters.find((reporter) => reporterLabel(reporter) === value) || null;
+              setReporterInput(value);
+              setForm((current) => ({
+                ...current,
+                createdBy: selected?.person || '',
+                hiretrackReporterKey: selected?.key || '',
+              }));
+            }}
+            list="hiretrack-reporters"
+            placeholder="Начните вводить имя"
+            autoComplete="off"
             required
           />
+          <datalist id="hiretrack-reporters">
+            {reporters.map((reporter) => (
+              <option key={reporter.key} value={reporterLabel(reporter)} />
+            ))}
+          </datalist>
+          {reportersError ? <small className="field-error">{reportersError}</small> : null}
         </label>
 
         <label className="full">

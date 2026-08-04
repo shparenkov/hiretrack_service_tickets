@@ -115,6 +115,13 @@ export interface CreateTicketPayload {
   priority?: TicketPriority;
   receivedAt?: string;
   createdBy?: string;
+  hiretrackReporterKey?: string;
+}
+
+export interface HiretrackReporterRecord {
+  key: string;
+  person: string;
+  role: 'staff' | 'crew';
 }
 
 export interface TicketActivityRecord {

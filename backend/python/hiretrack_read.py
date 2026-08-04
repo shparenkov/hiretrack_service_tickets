@@ -78,6 +78,21 @@ REPAIR_BY_ITEM_QUERY = REPAIR_BY_RECORD_QUERY.replace(
     "SD.RecordNo = ?", "SD.ItemRef = ?"
 ) + " ORDER BY SD.RecordNo DESC"
 
+STAFF_REPORTERS_QUERY = """
+    SELECT UID AS SourceId, UserName AS Person
+    FROM Users
+    WHERE Active = TRUE
+    ORDER BY UserName
+"""
+
+CREW_REPORTERS_QUERY = """
+    SELECT NameCounter AS SourceId, FullName AS Person
+    FROM Name2
+    WHERE CREW = TRUE
+        AND (Archived = FALSE OR Archived IS NULL)
+    ORDER BY FullName
+"""
+
 
 def serialize(value):
     if isinstance(value, (datetime, date)):
@@ -153,6 +168,32 @@ def lookup_repair_state(cursor, payload):
     }
 
 
+def lookup_reporters(cursor):
+    result = []
+    cursor.execute(STAFF_REPORTERS_QUERY)
+    for row in rows_as_dicts(cursor):
+        person = normalize_text(row.get("Person"))
+        if person:
+            result.append({
+                "key": f"staff:{int(row['SourceId'])}",
+                "person": person,
+                "role": "staff",
+            })
+
+    cursor.execute(CREW_REPORTERS_QUERY)
+    for row in rows_as_dicts(cursor):
+        person = normalize_text(row.get("Person"))
+        if person:
+            result.append({
+                "key": f"crew:{int(row['SourceId'])}",
+                "person": person,
+                "role": "crew",
+            })
+
+    result.sort(key=lambda reporter: (reporter["person"].casefold(), reporter["role"]))
+    return result
+
+
 def main():
     request = json.load(sys.stdin)
     operation = request.get("operation")
@@ -166,6 +207,8 @@ def main():
             result = lookup_eqlists(cursor, payload)
         elif operation == "repair-state":
             result = lookup_repair_state(cursor, payload)
+        elif operation == "reporters":
+            result = lookup_reporters(cursor)
         else:
             raise ValueError("Unsupported HireTrack read operation")
         json.dump({"ok": True, "result": result}, sys.stdout, ensure_ascii=False)

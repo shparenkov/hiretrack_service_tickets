@@ -110,6 +110,7 @@ button:disabled { opacity: .55; cursor: default; }
 .form-grid input:focus, .form-grid select:focus, .form-grid textarea:focus { border-color: #0d78c8; box-shadow: 0 0 0 1px #0d78c8; }
 .form-grid input[readonly] { color: #485566; background: #f3f6f8; }
 .form-grid textarea { min-height: 76px; resize: vertical; }
+.field-error { color: var(--bad); font-size: 10px; font-weight: 600; letter-spacing: 0; text-transform: none; }
 .serial-input-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px; }
 .scanner-trigger { min-height: 31px; padding: 5px 9px; }
 

@@ -88,7 +88,8 @@ async function createLoggedFaultInHiretrack(input) {
         BadEqlistId: input.badEqlistId ? String(input.badEqlistId) : '0',
         FaultDescriptionExpr: toWin1251ChrExpression(input.faultDescription || ''),
         EngineerNotesExpr: toWin1251ChrExpression(input.engineerNotes || ''),
-        ReportedBy: input.reportedBy || '',
+        ReportedBy: '',
+        ReportedByExpr: toWin1251ChrExpression(input.reportedBy || ''),
     });
     const url = `${config.hiretrack?.baseUrl}/api_v1/PostData?${searchParams.toString()}`;
     const raw = await requestJson('POST', url, config.hiretrack?.headers || {}, Number(config.poller?.timeoutMs || 15000));

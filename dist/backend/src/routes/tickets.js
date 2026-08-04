@@ -9,6 +9,7 @@ const hiretrack_eqlist_lookup_1 = require("../services/hiretrack-eqlist-lookup")
 const hiretrack_repair_create_1 = require("../services/hiretrack-repair-create");
 const hiretrack_equipment_lookup_1 = require("../services/hiretrack-equipment-lookup");
 const hiretrack_repair_status_1 = require("../services/hiretrack-repair-status");
+const hiretrack_reporters_1 = require("../services/hiretrack-reporters");
 const hiretrack_stocktake_history_1 = require("../services/hiretrack-stocktake-history");
 const stocktake_problem_pdf_1 = require("../services/stocktake-problem-pdf");
 const ticket_store_1 = require("../services/ticket-store");
@@ -44,7 +45,8 @@ const createTicketSchema = zod_1.z.object({
     assignedEngineerName: zod_1.z.string().optional().nullable(),
     priority: ticketPrioritySchema.optional(),
     receivedAt: zod_1.z.string().datetime().optional(),
-    createdBy: zod_1.z.string().trim().min(1),
+    createdBy: zod_1.z.string().trim().optional(),
+    hiretrackReporterKey: zod_1.z.string().regex(/^(staff|crew):\d+$/),
 });
 const updateTicketSchema = zod_1.z.object({
     equipmentName: zod_1.z.string().min(1).optional(),
@@ -319,6 +321,17 @@ exports.ticketsRouter.get('/lookups/equipment', async (req, res) => {
         });
     }
 });
+exports.ticketsRouter.get('/lookups/reporters', async (_req, res) => {
+    try {
+        return res.json({ ok: true, items: await (0, hiretrack_reporters_1.lookupHiretrackReporters)() });
+    }
+    catch (error) {
+        return res.status(502).json({
+            ok: false,
+            error: error instanceof Error ? error.message : 'HireTrack reporter lookup failed',
+        });
+    }
+});
 exports.ticketsRouter.get('/lookups/stock-check', async (req, res) => {
     const parsed = equipmentLookupSchema.safeParse(req.query);
     if (!parsed.success) {
@@ -460,7 +473,21 @@ exports.ticketsRouter.post('/', async (req, res) => {
             issues: parsed.error.flatten(),
         });
     }
-    const duplicate = await findActiveDuplicateTicket(parsed.data);
+    let reporter;
+    try {
+        reporter = await (0, hiretrack_reporters_1.resolveHiretrackReporter)(parsed.data.hiretrackReporterKey);
+    }
+    catch (error) {
+        return res.status(502).json({
+            ok: false,
+            error: error instanceof Error ? error.message : 'HireTrack reporter lookup failed',
+        });
+    }
+    if (!reporter) {
+        return res.status(400).json({ ok: false, error: 'Select a valid HireTrack Staff or Crew reporter.' });
+    }
+    const createInput = { ...parsed.data, createdBy: reporter.person };
+    const duplicate = await findActiveDuplicateTicket(createInput);
     if (duplicate) {
         return res.status(409).json({
             ok: false,
@@ -468,7 +495,7 @@ exports.ticketsRouter.post('/', async (req, res) => {
             ticket: duplicate,
         });
     }
-    let ticket = await ticketStore.createTicket(parsed.data);
+    let ticket = await ticketStore.createTicket(createInput);
     const bitrixSyncResult = await syncBitrixForTicket(ticket.id);
     if (bitrixSyncResult?.ticket) {
         ticket = bitrixSyncResult.ticket;

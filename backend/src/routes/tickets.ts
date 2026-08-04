@@ -5,6 +5,7 @@ import { lookupEquipmentEqlistsInHiretrack } from '../services/hiretrack-eqlist-
 import { createLoggedFaultInHiretrack } from '../services/hiretrack-repair-create';
 import { lookupEquipmentInHiretrack } from '../services/hiretrack-equipment-lookup';
 import { lookupRepairStateInHiretrack } from '../services/hiretrack-repair-status';
+import { lookupHiretrackReporters, resolveHiretrackReporter } from '../services/hiretrack-reporters';
 import { lookupStocktakeHistoryInHiretrack } from '../services/hiretrack-stocktake-history';
 import { renderStocktakeProblemPdf, renderStocktakeSummaryPdf } from '../services/stocktake-problem-pdf';
 import { HiretrackStockCheckRecord } from '../types';
@@ -45,7 +46,8 @@ const createTicketSchema = z.object({
   assignedEngineerName: z.string().optional().nullable(),
   priority: ticketPrioritySchema.optional(),
   receivedAt: z.string().datetime().optional(),
-  createdBy: z.string().trim().min(1),
+  createdBy: z.string().trim().optional(),
+  hiretrackReporterKey: z.string().regex(/^(staff|crew):\d+$/),
 });
 
 const updateTicketSchema = z.object({
@@ -376,6 +378,17 @@ ticketsRouter.get('/lookups/equipment', async (req, res) => {
   }
 });
 
+ticketsRouter.get('/lookups/reporters', async (_req, res) => {
+  try {
+    return res.json({ ok: true, items: await lookupHiretrackReporters() });
+  } catch (error) {
+    return res.status(502).json({
+      ok: false,
+      error: error instanceof Error ? error.message : 'HireTrack reporter lookup failed',
+    });
+  }
+});
+
 ticketsRouter.get('/lookups/stock-check', async (req, res) => {
   const parsed = equipmentLookupSchema.safeParse(req.query);
   if (!parsed.success) {
@@ -524,7 +537,22 @@ ticketsRouter.post('/', async (req, res) => {
     });
   }
 
-  const duplicate = await findActiveDuplicateTicket(parsed.data);
+  let reporter;
+  try {
+    reporter = await resolveHiretrackReporter(parsed.data.hiretrackReporterKey);
+  } catch (error) {
+    return res.status(502).json({
+      ok: false,
+      error: error instanceof Error ? error.message : 'HireTrack reporter lookup failed',
+    });
+  }
+  if (!reporter) {
+    return res.status(400).json({ ok: false, error: 'Select a valid HireTrack Staff or Crew reporter.' });
+  }
+
+  const createInput = { ...parsed.data, createdBy: reporter.person };
+
+  const duplicate = await findActiveDuplicateTicket(createInput);
   if (duplicate) {
     return res.status(409).json({
       ok: false,
@@ -533,7 +561,7 @@ ticketsRouter.post('/', async (req, res) => {
     });
   }
 
-  let ticket = await ticketStore.createTicket(parsed.data);
+  let ticket = await ticketStore.createTicket(createInput);
   const bitrixSyncResult = await syncBitrixForTicket(ticket.id);
   if (bitrixSyncResult?.ticket) {
     ticket = bitrixSyncResult.ticket;

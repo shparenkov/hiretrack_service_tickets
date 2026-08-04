@@ -1,7 +1,7 @@
 import { spawn } from 'child_process';
 import path from 'path';
 
-type ReadOperation = 'equipment' | 'eqlists' | 'repair-state';
+type ReadOperation = 'equipment' | 'eqlists' | 'repair-state' | 'reporters';
 
 interface BridgeResponse<T> {
   ok: boolean;
