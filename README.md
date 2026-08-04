@@ -15,6 +15,10 @@ Equipment and eqlist lookups use a read-only Python/ODBC bridge. Logged Fault
 creation remains on the existing HireTrack HTTP/QBE integration so HireTrack's
 write-side business logic is preserved.
 
+QBE 157 must match `backend/sql/qbe-create-repair-from-item.sql`. The query keeps
+the legacy `ReportedBy` parameter and adds `ReportedByExpr` for Win-1251-safe
+Cyrillic reporter names.
+
 ## Development
 
 ```powershell
