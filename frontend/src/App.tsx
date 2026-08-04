@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { createTicket, getTicketActivity, getTickets } from './api';
+import { createTicket, DuplicateTicketError, getTicketActivity, getTickets } from './api';
 import { TicketActivityPanel } from './components/TicketActivityPanel';
 import { TicketForm } from './components/TicketForm';
 import { TicketList } from './components/TicketList';
@@ -44,10 +44,18 @@ export default function App() {
   }
 
   async function handleCreate(payload: Parameters<typeof createTicket>[0]) {
-    const created = await createTicket(payload);
-    await reloadTickets();
-    setSelectedTicketId(created.id);
-    return created;
+    try {
+      const created = await createTicket(payload);
+      await reloadTickets();
+      setSelectedTicketId(created.id);
+      return created;
+    } catch (caught) {
+      if (caught instanceof DuplicateTicketError) {
+        await reloadTickets();
+        setSelectedTicketId(caught.ticket.id);
+      }
+      throw caught;
+    }
   }
 
   const selectedTicket = tickets.find((ticket) => ticket.id === selectedTicketId) || null;

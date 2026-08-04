@@ -48,6 +48,7 @@ export function TicketList({ items, selectedTicketId, onSelect }: TicketListProp
             <th>Serial</th>
             <th>Client</th>
             <th>Received</th>
+            <th>Создал</th>
             <th>Bitrix</th>
             <th>HireTrack</th>
           </tr>
@@ -68,6 +69,7 @@ export function TicketList({ items, selectedTicketId, onSelect }: TicketListProp
               <td>{ticket.serialNumber}</td>
               <td>{ticket.clientName || '-'}</td>
               <td>{formatDate(ticket.receivedAt)}</td>
+              <td>{ticket.createdBy}</td>
               <td>
                 <span className={syncClass(ticket.syncBitrixState)}>{ticket.syncBitrixState}</span>
               </td>

@@ -37,6 +37,9 @@ export function TicketActivityPanel({ ticket, items }: TicketActivityPanelProps)
           <strong>Client:</strong> {ticket.clientName || '-'}
         </div>
         <div>
+          <strong>Создал:</strong> {ticket.createdBy}
+        </div>
+        <div>
           <strong>Fault:</strong> {ticket.faultDescription}
         </div>
       </div>

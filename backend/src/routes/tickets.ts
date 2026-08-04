@@ -4,6 +4,7 @@ import { createBitrixTicketItem } from '../services/bitrix-ticket-sync';
 import { lookupEquipmentEqlistsInHiretrack } from '../services/hiretrack-eqlist-lookup';
 import { createLoggedFaultInHiretrack } from '../services/hiretrack-repair-create';
 import { lookupEquipmentInHiretrack } from '../services/hiretrack-equipment-lookup';
+import { lookupRepairStateInHiretrack } from '../services/hiretrack-repair-status';
 import { lookupStocktakeHistoryInHiretrack } from '../services/hiretrack-stocktake-history';
 import { renderStocktakeProblemPdf, renderStocktakeSummaryPdf } from '../services/stocktake-problem-pdf';
 import { HiretrackStockCheckRecord } from '../types';
@@ -44,7 +45,7 @@ const createTicketSchema = z.object({
   assignedEngineerName: z.string().optional().nullable(),
   priority: ticketPrioritySchema.optional(),
   receivedAt: z.string().datetime().optional(),
-  createdBy: z.string().optional(),
+  createdBy: z.string().trim().min(1),
 });
 
 const updateTicketSchema = z.object({
@@ -87,6 +88,11 @@ const eqlistLookupSchema = z.object({
   itemRef: z.coerce.number().int().optional(),
   barcodeRaw: z.string().optional(),
   serialNumber: z.string().optional(),
+});
+
+const repairStateSchema = z.object({
+  itemRef: z.coerce.number().int().positive(),
+  serviceRecordNo: z.coerce.number().int().positive().optional(),
 });
 
 const stocktakeHistorySchema = z.object({
@@ -146,13 +152,12 @@ function isTicketActive(status: string) {
   return status !== 'handed_over' && status !== 'cancelled';
 }
 
-async function findActiveDuplicateTicket(input: z.infer<typeof createTicketSchema>) {
+export async function findActiveDuplicateTicket(input: z.infer<typeof createTicketSchema>) {
   const tickets = await ticketStore.listTickets();
   const serialNumber = normalizeLookupText(input.serialNumber);
   const barcodeRaw = normalizeLookupText(input.barcodeRaw ?? null);
 
-  return (
-    tickets.find((ticket) => {
+  const duplicate = tickets.find((ticket) => {
       if (!isTicketActive(ticket.status)) {
         return false;
       }
@@ -170,8 +175,26 @@ async function findActiveDuplicateTicket(input: z.infer<typeof createTicketSchem
       }
 
       return false;
-    }) || null
-  );
+    }) || null;
+
+  if (!duplicate || !input.hiretrackItemRef || duplicate.syncHiretrackState !== 'ok') {
+    return duplicate;
+  }
+
+  try {
+    const repairState = await lookupRepairStateInHiretrack(
+      input.hiretrackItemRef,
+      Number(duplicate.hiretrackTicketId || 0),
+    );
+    if (repairState.active) {
+      return duplicate;
+    }
+    await ticketStore.setStatus(duplicate.id, 'handed_over', 'hiretrack-reconcile');
+    return null;
+  } catch {
+    // A failed state check must not bypass duplicate protection.
+    return duplicate;
+  }
 }
 
 async function syncLoggedFaultForTicket(ticketId: string) {
@@ -194,7 +217,7 @@ async function syncLoggedFaultForTicket(ticketId: string) {
       badEqlistId: ticket.hiretrackEqlistId,
       faultDescription: ticket.faultDescription,
       engineerNotes: ticket.engineerNotes,
-      reportedBy: ticket.clientName || ticket.clientCompany || ticket.createdBy,
+      reportedBy: ticket.createdBy,
     });
 
     const updated = await ticketStore.updateTicket(
@@ -391,6 +414,22 @@ ticketsRouter.get('/lookups/eqlists', async (req, res) => {
     return res.status(502).json({
       ok: false,
       error: error instanceof Error ? error.message : 'HireTrack eqlist lookup failed',
+    });
+  }
+});
+
+ticketsRouter.get('/lookups/repair-state', async (req, res) => {
+  const parsed = repairStateSchema.safeParse(req.query);
+  if (!parsed.success) {
+    return res.status(400).json({ ok: false, error: 'Validation failed', issues: parsed.error.flatten() });
+  }
+  try {
+    const result = await lookupRepairStateInHiretrack(parsed.data.itemRef, parsed.data.serviceRecordNo);
+    return res.json({ ok: true, result });
+  } catch (error) {
+    return res.status(502).json({
+      ok: false,
+      error: error instanceof Error ? error.message : 'HireTrack repair state lookup failed',
     });
   }
 });

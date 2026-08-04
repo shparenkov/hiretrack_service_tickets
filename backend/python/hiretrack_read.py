@@ -58,6 +58,26 @@ EQLIST_HISTORY_QUERY = """
     ORDER BY O.ScanDate DESC
 """
 
+REPAIR_BY_RECORD_QUERY = """
+    SELECT
+        SD.RecordNo AS ServiceRecordNo,
+        SD.CompletedDate AS CompletedDate,
+        SD.xRepairLineRef AS RepairLineRef,
+        S.Defcon AS RepairStatus,
+        I.CommissionStatus AS CommissionStatus
+    FROM ServData SD
+    INNER JOIN Sort S ON S.LineRef = SD.xRepairLineRef
+    LEFT JOIN Item I ON I.ItemRef = SD.ItemRef
+    WHERE SD.RecordNo = ?
+        AND SD.ServiceType = 1
+        AND S.Eqlno = 0
+        AND S.ListType = 0
+"""
+
+REPAIR_BY_ITEM_QUERY = REPAIR_BY_RECORD_QUERY.replace(
+    "SD.RecordNo = ?", "SD.ItemRef = ?"
+) + " ORDER BY SD.RecordNo DESC"
+
 
 def serialize(value):
     if isinstance(value, (datetime, date)):
@@ -108,6 +128,31 @@ def lookup_eqlists(cursor, payload):
     return rows
 
 
+def lookup_repair_state(cursor, payload):
+    item_ref = int(payload.get("itemRef") or 0)
+    service_record_no = int(payload.get("serviceRecordNo") or 0)
+    if service_record_no > 0:
+        cursor.execute(REPAIR_BY_RECORD_QUERY, service_record_no)
+    elif item_ref > 0:
+        cursor.execute(REPAIR_BY_ITEM_QUERY, item_ref)
+    else:
+        return {"active": False, "activeRepair": None, "latestRepair": None}
+    rows = rows_as_dicts(cursor)
+    active = next(
+        (
+            row
+            for row in rows
+            if row.get("CompletedDate") is None and int(row.get("RepairStatus") or 0) in (1, 4)
+        ),
+        None,
+    )
+    return {
+        "active": active is not None,
+        "activeRepair": active,
+        "latestRepair": rows[0] if rows else None,
+    }
+
+
 def main():
     request = json.load(sys.stdin)
     operation = request.get("operation")
@@ -119,6 +164,8 @@ def main():
             result = lookup_equipment(cursor, payload)
         elif operation == "eqlists":
             result = lookup_eqlists(cursor, payload)
+        elif operation == "repair-state":
+            result = lookup_repair_state(cursor, payload)
         else:
             raise ValueError("Unsupported HireTrack read operation")
         json.dump({"ok": True, "result": result}, sys.stdout, ensure_ascii=False)

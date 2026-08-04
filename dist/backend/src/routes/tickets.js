@@ -1,12 +1,14 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ticketsRouter = void 0;
+exports.findActiveDuplicateTicket = findActiveDuplicateTicket;
 const express_1 = require("express");
 const zod_1 = require("zod");
 const bitrix_ticket_sync_1 = require("../services/bitrix-ticket-sync");
 const hiretrack_eqlist_lookup_1 = require("../services/hiretrack-eqlist-lookup");
 const hiretrack_repair_create_1 = require("../services/hiretrack-repair-create");
 const hiretrack_equipment_lookup_1 = require("../services/hiretrack-equipment-lookup");
+const hiretrack_repair_status_1 = require("../services/hiretrack-repair-status");
 const hiretrack_stocktake_history_1 = require("../services/hiretrack-stocktake-history");
 const stocktake_problem_pdf_1 = require("../services/stocktake-problem-pdf");
 const ticket_store_1 = require("../services/ticket-store");
@@ -42,7 +44,7 @@ const createTicketSchema = zod_1.z.object({
     assignedEngineerName: zod_1.z.string().optional().nullable(),
     priority: ticketPrioritySchema.optional(),
     receivedAt: zod_1.z.string().datetime().optional(),
-    createdBy: zod_1.z.string().optional(),
+    createdBy: zod_1.z.string().trim().min(1),
 });
 const updateTicketSchema = zod_1.z.object({
     equipmentName: zod_1.z.string().min(1).optional(),
@@ -81,6 +83,10 @@ const eqlistLookupSchema = zod_1.z.object({
     itemRef: zod_1.z.coerce.number().int().optional(),
     barcodeRaw: zod_1.z.string().optional(),
     serialNumber: zod_1.z.string().optional(),
+});
+const repairStateSchema = zod_1.z.object({
+    itemRef: zod_1.z.coerce.number().int().positive(),
+    serviceRecordNo: zod_1.z.coerce.number().int().positive().optional(),
 });
 const stocktakeHistorySchema = zod_1.z.object({
     sessionState: zod_1.z.enum(['all', 'active', 'inactive']).optional(),
@@ -137,7 +143,7 @@ async function findActiveDuplicateTicket(input) {
     const tickets = await ticketStore.listTickets();
     const serialNumber = normalizeLookupText(input.serialNumber);
     const barcodeRaw = normalizeLookupText(input.barcodeRaw ?? null);
-    return (tickets.find((ticket) => {
+    const duplicate = tickets.find((ticket) => {
         if (!isTicketActive(ticket.status)) {
             return false;
         }
@@ -151,7 +157,22 @@ async function findActiveDuplicateTicket(input) {
             return true;
         }
         return false;
-    }) || null);
+    }) || null;
+    if (!duplicate || !input.hiretrackItemRef || duplicate.syncHiretrackState !== 'ok') {
+        return duplicate;
+    }
+    try {
+        const repairState = await (0, hiretrack_repair_status_1.lookupRepairStateInHiretrack)(input.hiretrackItemRef, Number(duplicate.hiretrackTicketId || 0));
+        if (repairState.active) {
+            return duplicate;
+        }
+        await ticketStore.setStatus(duplicate.id, 'handed_over', 'hiretrack-reconcile');
+        return null;
+    }
+    catch {
+        // A failed state check must not bypass duplicate protection.
+        return duplicate;
+    }
 }
 async function syncLoggedFaultForTicket(ticketId) {
     const ticket = await ticketStore.getTicket(ticketId);
@@ -171,7 +192,7 @@ async function syncLoggedFaultForTicket(ticketId) {
             badEqlistId: ticket.hiretrackEqlistId,
             faultDescription: ticket.faultDescription,
             engineerNotes: ticket.engineerNotes,
-            reportedBy: ticket.clientName || ticket.clientCompany || ticket.createdBy,
+            reportedBy: ticket.createdBy,
         });
         const updated = await ticketStore.updateTicket(ticketId, {
             hiretrackTicketId: String(result.serviceRecordNo),
@@ -335,6 +356,22 @@ exports.ticketsRouter.get('/lookups/eqlists', async (req, res) => {
         return res.status(502).json({
             ok: false,
             error: error instanceof Error ? error.message : 'HireTrack eqlist lookup failed',
+        });
+    }
+});
+exports.ticketsRouter.get('/lookups/repair-state', async (req, res) => {
+    const parsed = repairStateSchema.safeParse(req.query);
+    if (!parsed.success) {
+        return res.status(400).json({ ok: false, error: 'Validation failed', issues: parsed.error.flatten() });
+    }
+    try {
+        const result = await (0, hiretrack_repair_status_1.lookupRepairStateInHiretrack)(parsed.data.itemRef, parsed.data.serviceRecordNo);
+        return res.json({ ok: true, result });
+    }
+    catch (error) {
+        return res.status(502).json({
+            ok: false,
+            error: error instanceof Error ? error.message : 'HireTrack repair state lookup failed',
         });
     }
 });

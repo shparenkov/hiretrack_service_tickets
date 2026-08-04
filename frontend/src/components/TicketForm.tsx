@@ -5,7 +5,7 @@ import {
   HiretrackStockCheckRecord,
   TicketRecord,
 } from '../types';
-import { lookupHiretrackStockCheck } from '../api';
+import { DuplicateTicketError, lookupHiretrackStockCheck } from '../api';
 
 const BarcodeScanner = lazy(async () => {
   const module = await import('./BarcodeScanner');
@@ -68,8 +68,9 @@ export function TicketForm({ onCreate }: TicketFormProps) {
     clientName: '',
     hiretrackItemRef: null,
     hiretrackEquipmentTypeId: null,
-    createdBy: 'ui',
+    createdBy: '',
   });
+  const [lookupCode, setLookupCode] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isResolvingEquipment, setIsResolvingEquipment] = useState(false);
@@ -77,7 +78,7 @@ export function TicketForm({ onCreate }: TicketFormProps) {
   const [stockCheck, setStockCheck] = useState<HiretrackStockCheckRecord | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const hasLookupCandidate = Boolean((form.barcodeRaw && form.barcodeRaw.trim()) || (form.serialNumber && form.serialNumber.trim()));
+  const hasLookupCandidate = Boolean(lookupCode.trim());
   const hasMatchedHiretrackItem = Boolean(form.hiretrackItemRef);
   const shouldWarnLookupMissing = hasLookupCandidate && !hasMatchedHiretrackItem && !isResolvingEquipment;
 
@@ -151,12 +152,20 @@ export function TicketForm({ onCreate }: TicketFormProps) {
         hiretrackEqlistName: null,
         hiretrackJobNo: null,
         hiretrackJobRef: null,
-        createdBy: 'ui',
+        createdBy: '',
       });
+      setLookupCode('');
       setEqlistOptions([]);
       setStockCheck(null);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Failed to create ticket.');
+      if (caught instanceof DuplicateTicketError) {
+        const ticket = caught.ticket;
+        setError(
+          `Тикет ${ticket.ticketNumber} уже активен: статус ${ticket.status}, создан ${new Date(ticket.createdAt).toLocaleString('ru-RU')} пользователем ${ticket.createdBy}. Он выделен в списке тикетов.`
+        );
+      } else {
+        setError(caught instanceof Error ? caught.message : 'Failed to create ticket.');
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -184,6 +193,7 @@ export function TicketForm({ onCreate }: TicketFormProps) {
                 hiretrackJobNo: null,
                 hiretrackJobRef: null,
               }));
+              setLookupCode(scanResult.raw);
               setEqlistOptions([]);
               setMessage(`Scanned ${scanResult.barcodeType}`);
               setError(null);
@@ -196,58 +206,75 @@ export function TicketForm({ onCreate }: TicketFormProps) {
 
       <div className="form-header">
         <h2>New Ticket</h2>
-        <p>Fast path is scan first, then finish the repair intake fields.</p>
+        <p>Введите баркод или серийный номер либо откройте сканер одной кнопкой.</p>
       </div>
 
       {shouldWarnLookupMissing ? (
         <div className="warning-banner">
-          HireTrack item is not matched yet. Check the code or run Lookup before creating the ticket.
+          Оборудование еще не найдено в HireTrack. Выполните поиск перед созданием ремонта.
         </div>
       ) : null}
 
       <div className="form-grid">
-        <label>
-          Equipment Name
+        <label className="full">
+          Баркод или серийный номер
           <div className="serial-input-row">
             <input
-              value={form.equipmentName || ''}
-              onChange={(event) => setForm((current) => ({ ...current, equipmentName: event.target.value }))}
-              required
+              value={lookupCode}
+              onChange={(event) => {
+                const value = event.target.value;
+                clearHiretrackMatch();
+                setLookupCode(value);
+                setForm((current) => ({
+                  ...current,
+                  barcodeRaw: value || null,
+                  serialNumber: value,
+                }));
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && lookupCode.trim()) {
+                  event.preventDefault();
+                  void runStockCheck({ barcodeRaw: lookupCode.trim(), serialNumber: null });
+                }
+              }}
+              placeholder="Введите код или оставьте пустым для камеры"
+              autoComplete="off"
             />
             <button
               type="button"
               className="scanner-trigger"
-              onClick={() => void runStockCheck({ barcodeRaw: form.barcodeRaw, serialNumber: form.serialNumber })}
-              disabled={isResolvingEquipment || (!form.barcodeRaw && !form.serialNumber)}
+              onClick={() => {
+                const code = lookupCode.trim();
+                if (code) {
+                  void runStockCheck({ barcodeRaw: code, serialNumber: null });
+                } else {
+                  setIsScannerOpen(true);
+                }
+              }}
+              disabled={isResolvingEquipment}
             >
-              {isResolvingEquipment ? 'Checking...' : 'Check Stock'}
+              {isResolvingEquipment ? 'Поиск...' : lookupCode.trim() ? 'Найти' : 'Сканировать'}
             </button>
           </div>
+        </label>
+
+        <label>
+          Equipment Name
+          <input
+            value={form.equipmentName || ''}
+            onChange={(event) => setForm((current) => ({ ...current, equipmentName: event.target.value }))}
+            required
+          />
         </label>
 
         <label>
           Serial Number
-          <div className="serial-input-row">
-            <input
-              value={form.serialNumber || ''}
-              onChange={(event) => {
-                clearHiretrackMatch();
-                setForm((current) => ({
-                  ...current,
-                  serialNumber: event.target.value,
-                }));
-              }}
-              required
-            />
-            <button type="button" className="scanner-trigger" onClick={() => setIsScannerOpen(true)}>
-              Scan
-            </button>
-          </div>
+          <input value={form.serialNumber || ''} readOnly required />
         </label>
 
         <label>
-          Barcode Type
-          <input value={form.barcodeType || ''} readOnly placeholder="Filled by scanner" />
+          Barcode
+          <input value={form.barcodeRaw || ''} readOnly />
         </label>
 
         <label>
@@ -256,17 +283,12 @@ export function TicketForm({ onCreate }: TicketFormProps) {
         </label>
 
         <label className="full">
-          Barcode Raw
+          Кто принял оборудование
           <input
-            value={form.barcodeRaw || ''}
-            onChange={(event) => {
-              clearHiretrackMatch();
-              setForm((current) => ({
-                ...current,
-                barcodeRaw: event.target.value || null,
-              }));
-            }}
-            placeholder="Scanner payload or manual paste"
+            value={form.createdBy || ''}
+            onChange={(event) => setForm((current) => ({ ...current, createdBy: event.target.value }))}
+            placeholder="Имя сотрудника"
+            required
           />
         </label>
 

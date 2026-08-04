@@ -20,6 +20,13 @@ function getApiUrl() {
 
 const API_URL = getApiUrl();
 
+export class DuplicateTicketError extends Error {
+  constructor(public readonly ticket: TicketRecord) {
+    super(`Active ticket ${ticket.ticketNumber} already exists for this equipment.`);
+    this.name = 'DuplicateTicketError';
+  }
+}
+
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     headers: {
@@ -49,11 +56,19 @@ export async function getTickets(): Promise<TicketRecord[]> {
 }
 
 export async function createTicket(payload: CreateTicketPayload): Promise<TicketRecord> {
-  const response = await fetchJson<{ ok: boolean; ticket: TicketRecord }>(`${API_URL}/tickets`, {
+  const response = await fetch(`${API_URL}/tickets`, {
     method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  return response.ticket;
+  const body = await response.json() as { ok?: boolean; error?: string; ticket?: TicketRecord };
+  if (response.status === 409 && body.ticket) {
+    throw new DuplicateTicketError(body.ticket);
+  }
+  if (!response.ok || !body.ticket) {
+    throw new Error(body.error || `HTTP ${response.status}`);
+  }
+  return body.ticket;
 }
 
 export async function getTicketActivity(ticketId: string): Promise<TicketActivityRecord[]> {
